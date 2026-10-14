@@ -1,0 +1,212 @@
+@import "tailwindcss";
+
+/* ============================================================
+   APL — Autonex Premier League design tokens
+   Palette: white canvas + Autonex navy (from the logo) + a
+   brighter action blue for interactive bits.
+   ============================================================ */
+:root {
+  --background: #f5f7fb;      /* soft off-white page */
+  --surface: #ffffff;         /* cards */
+  --foreground: #0f1533;      /* near-navy text */
+  --muted: #5b6481;           /* secondary text */
+  --border: #e3e8f2;          /* hairlines */
+
+  --navy: #16205a;            /* Autonex logo navy */
+  --navy-700: #1d2b73;
+  --navy-600: #27368f;
+  --blue: #2f6bff;            /* action blue */
+  --blue-600: #2057e6;
+  --blue-50: #eaf1ff;
+
+  --success: #12925a;
+  --warning: #c57a00;
+  --danger: #d23b3b;
+
+  --radius: 14px;
+  --shadow: 0 1px 2px rgba(16, 24, 64, 0.04), 0 8px 24px rgba(16, 24, 64, 0.06);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-navy: var(--navy);
+  --color-navy-700: var(--navy-700);
+  --color-navy-600: var(--navy-600);
+  --color-blue: var(--blue);
+  --color-blue-600: var(--blue-600);
+  --color-blue-50: var(--blue-50);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+* {
+  border-color: var(--border);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- reusable component classes ---- */
+@layer components {
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    border-radius: 10px;
+    padding: 0.65rem 1.1rem;
+    transition: background 0.15s ease, transform 0.05s ease, opacity 0.15s ease;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .btn-primary { background: var(--blue); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: var(--blue-600); }
+
+  .btn-navy { background: var(--navy); color: #fff; }
+  .btn-navy:hover:not(:disabled) { background: var(--navy-700); }
+
+  .btn-ghost { background: transparent; color: var(--navy); border: 1px solid var(--border); }
+  .btn-ghost:hover:not(:disabled) { background: var(--blue-50); }
+
+  .btn-danger { background: var(--danger); color: #fff; }
+  .btn-danger:hover:not(:disabled) { filter: brightness(0.92); }
+
+  .btn-success { background: var(--success); color: #fff; }
+  .btn-success:hover:not(:disabled) { filter: brightness(0.94); }
+
+  .input {
+    width: 100%;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.6rem 0.8rem;
+    font-size: 0.95rem;
+    color: var(--foreground);
+    outline: none;
+    transition: border 0.15s ease, box-shadow 0.15s ease;
+  }
+  .input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-50); }
+
+  .label { font-size: 0.8rem; font-weight: 600; color: var(--muted); margin-bottom: 0.3rem; display: block; }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    font-size: 0.72rem; font-weight: 700; letter-spacing: 0.02em;
+    padding: 0.2rem 0.55rem; border-radius: 999px;
+  }
+}
+
+/* subtle entrance */
+@keyframes pop { from { transform: scale(0.96); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.animate-pop { animation: pop 0.18s ease-out; }
+
+/* ---- broadcast / live-board motion ---- */
+@keyframes bidPulse {
+  0% { transform: scale(1); text-shadow: 0 0 0 rgba(245,197,66,0); }
+  35% { transform: scale(1.08); text-shadow: 0 0 36px rgba(245,197,66,0.55); }
+  100% { transform: scale(1); text-shadow: 0 0 0 rgba(245,197,66,0); }
+}
+.animate-bidPulse { animation: bidPulse 0.5s ease-out; }
+
+@keyframes soldSlam {
+  0% { transform: translate(-50%, -50%) rotate(-14deg) scale(2.4); opacity: 0; }
+  55% { transform: translate(-50%, -50%) rotate(-14deg) scale(0.9); opacity: 1; }
+  70% { transform: translate(-50%, -50%) rotate(-14deg) scale(1.08); }
+  100% { transform: translate(-50%, -50%) rotate(-14deg) scale(1); opacity: 1; }
+}
+.animate-soldSlam { animation: soldSlam 0.5s cubic-bezier(.2,.8,.2,1) forwards; }
+
+@keyframes tickerIn {
+  from { transform: translateX(14px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.animate-tickerIn { animation: tickerIn 0.3s ease-out; }
+
+@keyframes floodlight {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 0.8; }
+}
+.animate-floodlight { animation: floodlight 5s ease-in-out infinite; }
+
+/* hammer strike (gavel slams down, recoils) */
+@keyframes hammerStrike {
+  0% { transform: rotate(-58deg) translateY(-6px); }
+  45% { transform: rotate(10deg); }
+  60% { transform: rotate(-6deg); }
+  75% { transform: rotate(4deg); }
+  100% { transform: rotate(0deg); }
+}
+.animate-hammerStrike { animation: hammerStrike 0.6s cubic-bezier(.3,1.4,.5,1) both; transform-origin: 80% 20%; }
+
+/* shockwave ring on strike */
+@keyframes shock {
+  0% { transform: scale(0.2); opacity: 0.7; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+.animate-shock { animation: shock 0.6s ease-out forwards; }
+
+/* new lot entrance variants */
+@keyframes lotSlideUp { from { transform: translateY(26px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.animate-lotSlideUp { animation: lotSlideUp 0.45s cubic-bezier(.2,.8,.2,1) both; }
+
+@keyframes lotFlip { from { transform: perspective(900px) rotateX(35deg); opacity: 0; } to { transform: perspective(900px) rotateX(0); opacity: 1; } }
+.animate-lotFlip { animation: lotFlip 0.5s cubic-bezier(.2,.8,.2,1) both; }
+
+@keyframes lotZoom { from { transform: scale(0.82); opacity: 0; filter: blur(6px); } to { transform: scale(1); opacity: 1; filter: blur(0); } }
+.animate-lotZoom { animation: lotZoom 0.45s ease-out both; }
+
+/* gold shine sweep across a surface */
+@keyframes shineSweep { 0% { background-position: -150% 0; } 100% { background-position: 250% 0; } }
+
+/* confetti */
+@keyframes confetti { 0% { transform: translateY(-10%) rotate(0); opacity: 1; } 100% { transform: translateY(560px) rotate(540deg); opacity: 0; } }
+
+/* neon flicker */
+@keyframes neonFlicker { 0%,100% { opacity: 1; } 92% { opacity: 1; } 94% { opacity: 0.4; } 96% { opacity: 1; } }
+.animate-neonFlicker { animation: neonFlicker 4s infinite; }
+
+/* marquee */
+@keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+/* slow spin already exists via tailwind animate-spin */
+
+/* premium: soft gold glow breathing on the live bid box */
+@keyframes glowPulse {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(245,196,81,0.25), 0 20px 60px -20px rgba(245,196,81,0.45), inset 0 1px 0 rgba(255,255,255,0.12); }
+  50%      { box-shadow: 0 0 0 1px rgba(245,196,81,0.45), 0 28px 80px -18px rgba(245,196,81,0.7), inset 0 1px 0 rgba(255,255,255,0.18); }
+}
+.animate-glowPulse { animation: glowPulse 2.8s ease-in-out infinite; }
+
+/* premium: diagonal light sweep across header banner / brand chips */
+@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+.animate-shimmer {
+  background-image: linear-gradient(110deg, transparent 25%, rgba(255,255,255,0.14) 50%, transparent 75%);
+  background-size: 200% 100%;
+  animation: shimmer 6s linear infinite;
+}
+
+/* premium: slow vertical float for the hero avatar */
+@keyframes floatY { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+.animate-floatY { animation: floatY 5s ease-in-out infinite; }
