@@ -634,10 +634,22 @@ function StateRing({
       ? Math.max(0, LOT_SECONDS - Math.floor((now - Date.parse(updatedAt)) / 1000))
       : null;
 
-  // hit zero → tell the board to auto-close this lot
+  // Safety: only auto-close a lot we've actually watched tick down from full.
+  // Record the updatedAt once we've seen it near-full; only fire onExpire at
+  // zero if it matches. A lot that mounts already-stale (remaining 0) never
+  // armed → never auto-closes → admin closes it manually. No instant-unsold.
+  const armedForRef = useRef<string | null>(null);
   useEffect(() => {
-    if (open && remaining === 0) onExpire?.();
-  }, [open, remaining, onExpire]);
+    if (open && updatedAt && remaining != null && remaining >= LOT_SECONDS - 3) {
+      armedForRef.current = updatedAt;
+    }
+  }, [open, updatedAt, remaining]);
+
+  useEffect(() => {
+    if (open && remaining === 0 && updatedAt && armedForRef.current === updatedAt) {
+      onExpire?.();
+    }
+  }, [open, remaining, updatedAt, onExpire]);
   const frac = remaining != null ? remaining / LOT_SECONDS : 1;
   const urgent = remaining != null && remaining <= 30;
   const ring = urgent ? "#ef4444" : CYAN;
