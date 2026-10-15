@@ -234,11 +234,21 @@ export default function TeamConsole({
 
         {/* MY TEAM roster */}
         <div className="card p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-bold text-navy">My Team</h3>
-            <span className="text-xs font-semibold text-muted">
-              {myRoster.length}/{auction.squad_size}
-            </span>
+          <div className="flex items-center gap-3 mb-4 border-b border-slate-100 pb-3">
+            {me.logo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={me.logo_url} alt={me.name} className="h-11 w-11 rounded-full object-cover ring-1 ring-black/10" />
+            ) : (
+              <div className="grid h-11 w-11 place-items-center rounded-full bg-blue-50 font-extrabold text-navy ring-1 ring-blue-100">
+                {me.name.split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("")}
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-bold text-navy leading-tight">{me.name}</div>
+              <div className="text-xs text-muted">
+                Squad {myRoster.length}/{auction.squad_size} · {fmt(me.remaining)} left
+              </div>
+            </div>
           </div>
           {myRoster.length === 0 ? (
             <p className="text-sm text-muted py-6 text-center">No players yet — win a bid to build your squad.</p>
