@@ -54,20 +54,16 @@ export async function updateConfig(cfg: {
 
   const sb = createAdminClient();
 
-  const { data: prev } = await sb.from("auction").select("base_price").eq("id", 1).single();
-  const oldBase = prev?.base_price ?? null;
-
   const { error } = await sb.from("auction").update(cfg).eq("id", 1);
   if (error) return { ok: false, error: error.message };
 
-  // auto-apply the configured base price to every player whenever it changes,
-  // so the Setup base price is the single source of truth for all lots.
-  if (cfg.base_price !== oldBase) {
-    await sb
-      .from("players")
-      .update({ base_price: cfg.base_price })
-      .neq("id", "00000000-0000-0000-0000-000000000000");
-  }
+  // Setup base price is the single source of truth: every Save pushes it to
+  // all players so their base (= opening bid) always matches the config.
+  const { error: pErr } = await sb
+    .from("players")
+    .update({ base_price: cfg.base_price })
+    .neq("id", "00000000-0000-0000-0000-000000000000");
+  if (pErr) return { ok: false, error: pErr.message };
 
   touch();
   return { ok: true };
