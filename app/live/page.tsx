@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { autoCloseLot } from "@/app/actions/admin";
 import Image from "next/image";
 import { useBoardData, initials } from "@/lib/useBoardData";
 import { useSoldEvent, useCountUp } from "@/lib/useLiveExtras";
@@ -32,6 +33,7 @@ export default function LiveBoard() {
     availCount,
     loading,
     rosterOf,
+    bids,
   } = b;
   const sold = useSoldEvent(auction, b.players, teamName);
   const bid = useCountUp(auction?.current_bid ?? current?.base_price ?? 0);
@@ -62,6 +64,17 @@ export default function LiveBoard() {
 
   const status = auction?.status ?? "setup";
 
+  // when a lot's 4-min timer expires, auto-close it (sold if bid, else unsold).
+  // fire once per player; the server action re-validates + is idempotent, so
+  // multiple broadcast screens racing is harmless.
+  const closedRef = useRef<string | null>(null);
+  const handleExpire = () => {
+    const pid = current?.id ?? null;
+    if (!pid || closedRef.current === pid) return;
+    closedRef.current = pid;
+    autoCloseLot();
+  };
+
   // chips under the player name — derived from real skill (comma-split) + level.
   const chips = useMemo(() => {
     const parts = (current?.skill ?? "")
@@ -71,6 +84,17 @@ export default function LiveBoard() {
     if (current?.skill_level) parts.push(current.skill_level);
     return parts.slice(0, 3);
   }, [current]);
+
+  // live bid feed for the player on the block — oldest→newest so the strip
+  // reads like a running commentary: "Bidding started" then each team's bid.
+  const lotBids = useMemo(
+    () =>
+      (bids ?? [])
+        .filter((x) => x.player_id === current?.id)
+        .slice()
+        .reverse(),
+    [bids, current]
+  );
 
   return (
     <div
@@ -303,7 +327,7 @@ export default function LiveBoard() {
               </div>
 
               {/* circular status widget (honest live state — no fabricated countdown) */}
-              <StateRing status={status} open={!!(current && isOpen)} />
+              <StateRing status={status} open={!!(current && isOpen)} updatedAt={auction?.updated_at} onExpire={handleExpire} />
 
               {/* place-bid block */}
               <div className="flex flex-col items-stretch gap-1.5">
@@ -317,9 +341,23 @@ export default function LiveBoard() {
                     boxShadow: current && isOpen ? "0 0 20px rgba(0,180,255,0.6)" : "none",
                   }}
                 >
-                  <span className="inline-flex items-center gap-2">
-                    <Gavel className="h-4 w-4" color="#fff" /> PLACE BID
-                  </span>
+                  {(() => {
+                    const last = lotBids[lotBids.length - 1];
+                    const label =
+                      !(current && isOpen)
+                        ? "PLACE BID"
+                        : last
+                        ? `${last.team?.name ?? "—"} bid ₹ ${fmt(last.amount)}`
+                        : "BIDDING STARTED";
+                    return (
+                      <span
+                        key={last?.id ?? (current && isOpen ? "started" : "idle")}
+                        className="animate-pop inline-flex items-center gap-2 truncate px-2"
+                      >
+                        <Gavel className="h-4 w-4 shrink-0" color="#fff" /> {label}
+                      </span>
+                    );
+                  })()}
                 </div>
                 <div className="text-center text-[11px] font-semibold text-slate-300">
                   Next minimum bid:{" "}
@@ -566,34 +604,114 @@ function StatBox({
   );
 }
 
-function StateRing({ status, open }: { status: string; open: boolean }) {
-  const label = open ? "LIVE" : status === "paused" ? "HOLD" : status === "done" ? "DONE" : "WAIT";
+// Each lot runs for 4 minutes. The clock is anchored to auction.updated_at,
+// which openLot stamps and every bid refreshes — so a new bid resets the timer
+// and all broadcast screens stay in sync.
+const LOT_SECONDS = 240;
+const RING_C = 276; // 2πr, r = 44
+
+function StateRing({
+  status,
+  open,
+  updatedAt,
+  onExpire,
+}: {
+  status: string;
+  open: boolean;
+  updatedAt?: string;
+  onExpire?: () => void;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!open) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [open, updatedAt]);
+
+  const remaining =
+    open && updatedAt
+      ? Math.max(0, LOT_SECONDS - Math.floor((now - Date.parse(updatedAt)) / 1000))
+      : null;
+
+  // hit zero → tell the board to auto-close this lot
+  useEffect(() => {
+    if (open && remaining === 0) onExpire?.();
+  }, [open, remaining, onExpire]);
+  const frac = remaining != null ? remaining / LOT_SECONDS : 1;
+  const urgent = remaining != null && remaining <= 30;
+  const ring = urgent ? "#ef4444" : CYAN;
+
+  const label =
+    remaining != null
+      ? `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}`
+      : open
+      ? "LIVE"
+      : status === "paused"
+      ? "HOLD"
+      : status === "done"
+      ? "DONE"
+      : "WAIT";
+  const isWait = remaining == null && !open && status !== "paused" && status !== "done";
+
   return (
     <div
       className="relative grid h-28 w-28 -mt-6 place-items-center rounded-full"
-      style={{ background: "#06152d", boxShadow: "0 0 20px rgba(0,229,255,0.4)" }}
+      style={{
+        background: "#06152d",
+        boxShadow: urgent ? "0 0 22px rgba(239,68,68,0.55)" : "0 0 20px rgba(0,229,255,0.4)",
+      }}
     >
-      <svg className="absolute inset-0 -rotate-90" viewBox="0 0 100 100">
+      <svg
+        className={"absolute inset-0 " + (open ? "-rotate-90" : "animate-spin")}
+        style={open ? undefined : { animationDuration: "1.1s" }}
+        viewBox="0 0 100 100"
+      >
         <circle cx="50" cy="50" r="44" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="6" />
         <circle
           cx="50"
           cy="50"
           r="44"
           fill="none"
-          stroke={CYAN}
+          stroke={ring}
           strokeWidth="6"
           strokeLinecap="round"
-          strokeDasharray="276"
-          strokeDashoffset={open ? "70" : "180"}
-          className={open ? "animate-pulse" : ""}
-          style={{ filter: "drop-shadow(0 0 6px rgba(34,211,238,0.9))" }}
+          strokeDasharray={open ? String(RING_C) : "70 276"}
+          strokeDashoffset={open ? RING_C * (1 - frac) : 0}
+          className={urgent ? "animate-pulse" : ""}
+          style={{
+            filter: `drop-shadow(0 0 6px ${urgent ? "rgba(239,68,68,0.9)" : "rgba(34,211,238,0.9)"})`,
+            transition: "stroke-dashoffset 1s linear, stroke 0.3s",
+          }}
         />
       </svg>
       <div className="text-center">
-        <div style={{ fontFamily: "var(--font-anton)" }} className="text-3xl leading-none text-white">
-          {label}
+        {isWait ? (
+          <div
+            style={{ fontFamily: "var(--font-anton)" }}
+            className="flex items-center justify-center text-2xl leading-none text-white"
+          >
+            WAIT
+            <span className="animate-ing inline-block">ING</span>
+          </div>
+        ) : (
+          <div
+            style={{ fontFamily: "var(--font-anton)" }}
+            className={"text-3xl leading-none " + (urgent ? "text-red-400" : "text-white")}
+          >
+            {label}
+          </div>
+        )}
+        <div className="mt-0.5 flex items-center justify-center gap-0.5 text-[10px] font-bold text-cyan-400">
+          {remaining != null ? "TIME LEFT" : "STATUS"}
+          {!open && (
+            <span className="inline-flex gap-0.5">
+              <span className="animate-bounce" style={{ animationDelay: "0ms" }}>.</span>
+              <span className="animate-bounce" style={{ animationDelay: "150ms" }}>.</span>
+              <span className="animate-bounce" style={{ animationDelay: "300ms" }}>.</span>
+            </span>
+          )}
         </div>
-        <div className="mt-0.5 text-[10px] font-bold text-cyan-400">STATUS</div>
       </div>
     </div>
   );
@@ -621,12 +739,18 @@ function WaitingHero({
     <div className="flex h-full flex-col justify-between pb-1">
       {/* hero — compact, centered, no absolute overlap */}
       <div className="flex flex-1 flex-col items-center justify-center text-center">
-        <div className="relative mb-2 grid h-12 w-12 place-items-center">
+        <div className="relative mb-3 grid h-14 w-14 place-items-center">
+          {/* expanding ripple rings radiating outward */}
+          <span className="absolute inset-0 rounded-full bg-blue-400/20 animate-ping" style={{ animationDuration: "2s" }} />
+          <span className="absolute inset-1.5 rounded-full bg-cyan-400/20 animate-ping" style={{ animationDuration: "2s", animationDelay: "0.5s" }} />
+          {/* rotating accent ring */}
           <span
             className="absolute inset-0 rounded-full border-t-2 border-blue-500 animate-spin"
             style={{ animationDuration: "2.4s" }}
           />
-          <div className="animate-floatY text-2xl">{s.icon}</div>
+          {/* soft breathing halo + floating icon */}
+          <span className="absolute inset-2 rounded-full bg-white/80 shadow-inner animate-pulse" />
+          <div className="relative animate-floatY text-2xl">{s.icon}</div>
         </div>
         <div
           style={{ fontFamily: "var(--font-anton)" }}
@@ -634,7 +758,14 @@ function WaitingHero({
         >
           {s.title}
         </div>
-        <p className="mt-1 text-xs font-medium text-slate-500">{s.sub}</p>
+        <p className="mt-1 inline-flex items-center text-xs font-medium text-slate-500">
+          {s.sub}
+          <span className="ml-0.5 inline-flex">
+            <span className="animate-bounce" style={{ animationDelay: "0ms" }}>.</span>
+            <span className="animate-bounce" style={{ animationDelay: "150ms" }}>.</span>
+            <span className="animate-bounce" style={{ animationDelay: "300ms" }}>.</span>
+          </span>
+        </p>
         <div className="mt-3 inline-flex items-center gap-4 rounded-xl border border-slate-100 bg-white/70 px-5 py-2 shadow-sm">
           <HeroStat label="SOLD" value={soldCount} color="#059669" />
           <span className="h-6 w-px bg-slate-200" />

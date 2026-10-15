@@ -192,6 +192,14 @@ body {
 
 /* slow spin already exists via tailwind animate-spin */
 
+/* "WAIT" → "WAITING": the ING slides in from the right, holds, slides back out */
+@keyframes ingSlide {
+  0%        { transform: translateX(16px); opacity: 0; }
+  22%, 70%  { transform: translateX(0);    opacity: 1; }
+  92%, 100% { transform: translateX(16px); opacity: 0; }
+}
+.animate-ing { animation: ingSlide 2.2s cubic-bezier(.2,.8,.2,1) infinite; }
+
 /* premium: soft gold glow breathing on the live bid box */
 @keyframes glowPulse {
   0%, 100% { box-shadow: 0 0 0 1px rgba(245,196,81,0.25), 0 20px 60px -20px rgba(245,196,81,0.45), inset 0 1px 0 rgba(255,255,255,0.12); }

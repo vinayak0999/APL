@@ -252,6 +252,7 @@ export async function openLot(playerId: string): Promise<Result> {
       current_bid: null,
       current_bidder_team: null,
       lot_status: "open",
+      updated_at: new Date().toISOString(),
     })
     .eq("id", 1);
   if (error) return { ok: false, error: error.message };
@@ -309,6 +310,47 @@ export async function closeLotUnsold(): Promise<Result> {
       .update({ status: "unsold" })
       .eq("id", a.current_player_id);
   }
+  const { error } = await sb
+    .from("auction")
+    .update({
+      current_player_id: null,
+      current_bid: null,
+      current_bidder_team: null,
+      lot_status: "idle",
+    })
+    .eq("id", 1);
+  if (error) return { ok: false, error: error.message };
+  touch();
+  return { ok: true };
+}
+
+// Auto-close a lot whose 4-minute timer has expired. PUBLIC (no guard) so the
+// live board can fire it — but it re-validates server-side that the lot is
+// genuinely open AND past the 4-min window, and is idempotent: the first caller
+// closes the lot, any racing callers find it already idle and no-op. If there's
+// a bid → player SOLD to the top bidder; otherwise → UNSOLD.
+const LOT_MS = 240_000;
+
+export async function autoCloseLot(): Promise<Result> {
+  const sb = createAdminClient();
+  const { data: a } = await sb.from("auction").select("*").eq("id", 1).single();
+  if (!a || a.lot_status !== "open") return { ok: true }; // already closed — no-op
+  if (!a.current_player_id) return { ok: true };
+
+  // guard: only close if the timer has actually elapsed
+  const elapsed = Date.now() - new Date(a.updated_at).getTime();
+  if (elapsed < LOT_MS) return { ok: false, error: "Timer still running." };
+
+  if (a.current_bidder_team && a.current_bid != null) {
+    const { error: pErr } = await sb
+      .from("players")
+      .update({ status: "sold", sold_team: a.current_bidder_team, sold_price: a.current_bid })
+      .eq("id", a.current_player_id);
+    if (pErr) return { ok: false, error: pErr.message };
+  } else {
+    await sb.from("players").update({ status: "unsold" }).eq("id", a.current_player_id);
+  }
+
   const { error } = await sb
     .from("auction")
     .update({
