@@ -5,8 +5,10 @@ import Header from "@/components/Header";
 import { supabase } from "@/lib/supabase/client";
 import { useLiveData } from "@/lib/useLiveData";
 import { computeStandings, maxBid } from "@/lib/standings";
+import { usePlayerPhotos } from "@/lib/usePlayerPhotos";
 import { fmt } from "@/lib/format";
 import { CricketBall, Trophy } from "@/components/CricketArt";
+import type { Player } from "@/lib/types";
 
 export default function TeamConsole({
   team,
@@ -27,6 +29,22 @@ export default function TeamConsole({
   const me = standings.find((s) => s.id === team.id);
   const current = players.find((p) => p.id === auction?.current_player_id) ?? null;
   const teamName = (id: string | null) => teams.find((t) => t.id === id)?.name ?? "—";
+  const photoOf = usePlayerPhotos();
+
+  // my squad: retained captain/VC (shown first with a role badge) + won players
+  const myRoster = useMemo(() => {
+    const won = players.filter((p) => p.sold_team === team.id && p.status === "sold");
+    const cap = me?.captain_id ? players.find((p) => p.id === me.captain_id) : undefined;
+    const vc = me?.vice_captain_id ? players.find((p) => p.id === me.vice_captain_id) : undefined;
+    const rows: { player: Player; role: "C" | "VC" | null; price: number }[] = [];
+    if (cap) rows.push({ player: cap, role: "C", price: cap.base_price });
+    if (vc && vc.id !== cap?.id) rows.push({ player: vc, role: "VC", price: vc.base_price });
+    for (const p of won) {
+      if (p.id === cap?.id || p.id === vc?.id) continue;
+      rows.push({ player: p, role: null, price: p.sold_price ?? 0 });
+    }
+    return rows;
+  }, [players, team.id, me?.captain_id, me?.vice_captain_id]);
 
   function flash(ok: boolean, m: string) {
     setMsg({ t: ok ? "ok" : "err", m });
@@ -112,18 +130,20 @@ export default function TeamConsole({
         </div>
       </div>
 
-      <main className="mx-auto max-w-3xl px-5 py-6 space-y-5">
+      <main className="mx-auto max-w-5xl px-5 py-6 space-y-5">
         {msg && (
           <div className={"rounded-lg px-4 py-2 text-sm font-medium " + (msg.t === "ok" ? "bg-blue-50 text-navy" : "bg-red-50 text-danger")}>
             {msg.m}
           </div>
         )}
 
+        <div className="grid gap-5 lg:grid-cols-[1fr_340px] items-start">
         {/* live lot */}
         <div className="card p-7 text-center animate-pop">
           {current && isOpen ? (
             <>
-              <span className={"pill " + (current.gender === "F" ? "bg-pink-50 text-pink-700" : "bg-blue-50 text-navy")}>
+              <PlayerPhoto player={current} src={photoOf(current.name)} />
+              <span className={"pill mt-4 " + (current.gender === "F" ? "bg-pink-50 text-pink-700" : "bg-blue-50 text-navy")}>
                 {current.gender === "F" ? "Female" : "Male"}
               </span>
               <div className="text-4xl font-extrabold text-navy mt-3">{current.name}</div>
@@ -212,6 +232,39 @@ export default function TeamConsole({
           )}
         </div>
 
+        {/* MY TEAM roster */}
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-bold text-navy">My Team</h3>
+            <span className="text-xs font-semibold text-muted">
+              {myRoster.length}/{auction.squad_size}
+            </span>
+          </div>
+          {myRoster.length === 0 ? (
+            <p className="text-sm text-muted py-6 text-center">No players yet — win a bid to build your squad.</p>
+          ) : (
+            <div className="space-y-2">
+              {myRoster.map(({ player, role, price }) => (
+                <div key={player.id} className="flex items-center gap-3 rounded-lg bg-slate-50 px-3 py-2">
+                  <PlayerPhoto player={player} src={photoOf(player.name)} size={36} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate font-semibold text-navy">{player.name}</span>
+                      {role && (
+                        <span className={"shrink-0 rounded px-1.5 py-0.5 text-[10px] font-extrabold " + (role === "C" ? "bg-amber-100 text-amber-700" : "bg-sky-100 text-sky-700")}>
+                          {role}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted">{role ? "Retained" : "Won"} · {fmt(price)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        </div>
+
         {/* standings */}
         <div className="card p-5">
           <h3 className="font-bold text-navy mb-3">Standings</h3>
@@ -239,6 +292,37 @@ export default function TeamConsole({
         </div>
       </main>
     </>
+  );
+}
+
+function PlayerPhoto({
+  player,
+  src,
+  size = 132,
+}: {
+  player: Player;
+  src: string | null;
+  size?: number;
+}) {
+  const inits = player.name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
+  return (
+    <div
+      className="mx-auto overflow-hidden rounded-full bg-blue-50 ring-2 ring-blue-100 grid place-items-center"
+      style={{ width: size, height: size }}
+    >
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt={player.name} className="h-full w-full object-cover" />
+      ) : (
+        <span className="font-extrabold text-navy" style={{ fontSize: size * 0.34 }}>
+          {inits}
+        </span>
+      )}
+    </div>
   );
 }
 
