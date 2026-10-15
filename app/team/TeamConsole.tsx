@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import Header from "@/components/Header";
 import { supabase } from "@/lib/supabase/client";
 import { useLiveData } from "@/lib/useLiveData";
@@ -45,6 +46,26 @@ export default function TeamConsole({
     }
     return rows;
   }, [players, team.id, me?.captain_id, me?.vice_captain_id]);
+
+  function downloadSquad() {
+    const rows = myRoster.map(({ player, role, price }, i) => ({
+      "#": i + 1,
+      Team: team.name,
+      Player: player.name,
+      Role: role === "C" ? "Captain" : role === "VC" ? "Vice-captain" : "Won",
+      Skill: player.skill ?? "",
+      Level: player.skill_level ?? "",
+      Gender: player.gender === "F" ? "Female" : "Male",
+      Price: price,
+    }));
+    const ws = XLSX.utils.json_to_sheet(
+      rows.length ? rows : [{ "#": "", Team: team.name, Player: "", Role: "", Skill: "", Level: "", Gender: "", Price: "" }]
+    );
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Squad");
+    const safe = team.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+    XLSX.writeFile(wb, `apl-${safe}-squad.xlsx`);
+  }
 
   function flash(ok: boolean, m: string) {
     setMsg({ t: ok ? "ok" : "err", m });
@@ -249,6 +270,14 @@ export default function TeamConsole({
                 Squad {myRoster.length}/{auction.squad_size} · {fmt(me.remaining)} left
               </div>
             </div>
+            <button
+              className="btn btn-ghost text-xs whitespace-nowrap"
+              onClick={downloadSquad}
+              disabled={myRoster.length === 0}
+              title="Download your squad as Excel"
+            >
+              ⬇ Excel
+            </button>
           </div>
           {myRoster.length === 0 ? (
             <p className="text-sm text-muted py-6 text-center">No players yet — win a bid to build your squad.</p>
