@@ -1,7 +1,9 @@
--- PATCH v5: purse-only bidding + RETAINED captain/vice-captain.
+-- PATCH v6: purse bidding + RETAINED captain/VC + SQUAD RESERVE cap.
 --   * each team's captain + vice-captain cost their base_price against the purse
---   * they also each occupy one squad slot (count toward the squad-size cap)
---   * everything else identical to v4 (purse is the only money rule)
+--     and each occupy one squad slot (count toward the squad-size cap)
+--   * a team must keep back enough purse to buy its remaining squad slots at
+--     base price — so it can't overspend on one player and leave slots unfillable
+--   * max bid = (purse left) - (slots left after this win) * base_price
 -- Safe to run anytime — does NOT delete teams/players/sales. Idempotent.
 -- Run in: Supabase Dashboard > SQL Editor > New query > Run.
 
@@ -21,6 +23,9 @@ declare
   v_cap_count  int;
   v_cap_id     uuid;
   v_vc_id      uuid;
+  v_slots_left int;
+  v_reserve    bigint;
+  v_maxbid     bigint;
 begin
   select * into a from auction where id = 1 for update;
 
@@ -73,10 +78,18 @@ begin
       'Your squad is full (max ' || a.squad_size || ').');
   end if;
 
-  -- the ONLY money rule: can't bid more than you have left
-  if p_amount > (a.budget_per_team - v_spent) then
+  -- squad reserve: keep enough purse to buy the remaining slots at base price.
+  -- after winning THIS player, slots left to fill = squad_size - v_squad - 1.
+  v_slots_left := a.squad_size - v_squad - 1;
+  if v_slots_left < 0 then v_slots_left := 0; end if;
+  v_reserve := v_slots_left * a.base_price;
+  v_maxbid  := (a.budget_per_team - v_spent) - v_reserve;
+
+  if p_amount > v_maxbid then
     return jsonb_build_object('ok', false, 'error',
-      'Not enough purse — you have ' || (a.budget_per_team - v_spent) || ' left.');
+      'Over your cap — max bid is ' || v_maxbid ||
+      ' (reserve ' || v_reserve || ' for ' || v_slots_left || ' more slots).',
+      'expected', v_maxbid);
   end if;
 
   update auction

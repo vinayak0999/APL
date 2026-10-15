@@ -53,8 +53,22 @@ export async function updateConfig(cfg: {
   if (cfg.bid_increment < 1) return { ok: false, error: "Increment must be >= 1." };
 
   const sb = createAdminClient();
+
+  const { data: prev } = await sb.from("auction").select("base_price").eq("id", 1).single();
+  const oldBase = prev?.base_price ?? null;
+
   const { error } = await sb.from("auction").update(cfg).eq("id", 1);
   if (error) return { ok: false, error: error.message };
+
+  // auto-apply the configured base price to every player whenever it changes,
+  // so the Setup base price is the single source of truth for all lots.
+  if (cfg.base_price !== oldBase) {
+    await sb
+      .from("players")
+      .update({ base_price: cfg.base_price })
+      .neq("id", "00000000-0000-0000-0000-000000000000");
+  }
+
   touch();
   return { ok: true };
 }

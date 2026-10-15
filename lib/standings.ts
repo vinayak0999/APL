@@ -41,9 +41,12 @@ export function computeStandings(
   });
 }
 
-// How much a team can bid right now: simply its remaining purse. Squad size is
-// a cap (enforced separately), not a mandatory fill, so no reserve is withheld.
+// How much a team can bid right now. A team must keep back enough purse to buy
+// the rest of its squad at base price — so it can't blow everything on one
+// player and leave slots it can't fill. After winning THIS player it still has
+// (squad_size - squad_count - 1) slots to fill, each costing at least base_price.
 export function maxBid(st: TeamStanding, auction: Auction): number {
-  void auction;
-  return st.remaining;
+  const slotsAfter = Math.max(0, auction.squad_size - st.squad_count - 1);
+  const reserve = slotsAfter * auction.base_price;
+  return Math.max(0, st.remaining - reserve);
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { autoCloseLot } from "@/app/actions/admin";
 import Image from "next/image";
 import { useBoardData, initials } from "@/lib/useBoardData";
 import { useSoldEvent, useCountUp } from "@/lib/useLiveExtras";
@@ -63,17 +62,6 @@ export default function LiveBoard() {
       : auction.current_bid + (auction.bid_increment ?? 0);
 
   const status = auction?.status ?? "setup";
-
-  // when a lot's 4-min timer expires, auto-close it (sold if bid, else unsold).
-  // fire once per player; the server action re-validates + is idempotent, so
-  // multiple broadcast screens racing is harmless.
-  const closedRef = useRef<string | null>(null);
-  const handleExpire = () => {
-    const pid = current?.id ?? null;
-    if (!pid || closedRef.current === pid) return;
-    closedRef.current = pid;
-    autoCloseLot();
-  };
 
   // chips under the player name — derived from real skill (comma-split) + level.
   const chips = useMemo(() => {
@@ -327,7 +315,7 @@ export default function LiveBoard() {
               </div>
 
               {/* circular status widget (honest live state — no fabricated countdown) */}
-              <StateRing status={status} open={!!(current && isOpen)} updatedAt={auction?.updated_at} onExpire={handleExpire} />
+              <StateRing status={status} open={!!(current && isOpen)} lotKey={`${auction?.current_player_id ?? ""}:${auction?.current_bid ?? ""}`} />
 
               {/* place-bid block */}
               <div className="flex flex-col items-stretch gap-1.5">
@@ -613,43 +601,38 @@ const RING_C = 276; // 2πr, r = 44
 function StateRing({
   status,
   open,
-  updatedAt,
-  onExpire,
+  lotKey,
 }: {
   status: string;
   open: boolean;
-  updatedAt?: string;
-  onExpire?: () => void;
+  lotKey: string;
 }) {
-  const [now, setNow] = useState(() => Date.now());
+  // All Date.now() lives in effects (never during render) so the page can be
+  // prerendered. Anchor the countdown on the CLIENT: it restarts whenever
+  // lotKey changes (new player on the block, or a new bid). No dependence on DB
+  // timestamps — so the timer always runs. Display-only; admin closes manually.
+  const [now, setNow] = useState(0);
+  const startRef = useRef(0);
+
+  useEffect(() => {
+    // (re)anchor when the lot or bid changes
+    const t = Date.now();
+    startRef.current = t;
+    setNow(t);
+  }, [lotKey]);
+
   useEffect(() => {
     if (!open) return;
-    setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [open, updatedAt]);
+  }, [open, lotKey]);
 
-  const remaining =
-    open && updatedAt
-      ? Math.max(0, LOT_SECONDS - Math.floor((now - Date.parse(updatedAt)) / 1000))
-      : null;
+  const remaining = !open
+    ? null
+    : startRef.current === 0
+    ? LOT_SECONDS // before first tick anchors
+    : Math.max(0, LOT_SECONDS - Math.floor((now - startRef.current) / 1000));
 
-  // Safety: only auto-close a lot we've actually watched tick down from full.
-  // Record the updatedAt once we've seen it near-full; only fire onExpire at
-  // zero if it matches. A lot that mounts already-stale (remaining 0) never
-  // armed → never auto-closes → admin closes it manually. No instant-unsold.
-  const armedForRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (open && updatedAt && remaining != null && remaining >= LOT_SECONDS - 3) {
-      armedForRef.current = updatedAt;
-    }
-  }, [open, updatedAt, remaining]);
-
-  useEffect(() => {
-    if (open && remaining === 0 && updatedAt && armedForRef.current === updatedAt) {
-      onExpire?.();
-    }
-  }, [open, remaining, updatedAt, onExpire]);
   const frac = remaining != null ? remaining / LOT_SECONDS : 1;
   const urgent = remaining != null && remaining <= 30;
   const ring = urgent ? "#ef4444" : CYAN;
