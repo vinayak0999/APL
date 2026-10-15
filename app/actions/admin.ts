@@ -244,6 +244,15 @@ export async function openLot(playerId: string): Promise<Result> {
   if (player.status === "sold")
     return { ok: false, error: "That player is already sold." };
 
+  // retained captains / vice-captains are not auctioned
+  const { data: retained } = await sb
+    .from("teams")
+    .select("id")
+    .or(`captain_id.eq.${playerId},vice_captain_id.eq.${playerId}`)
+    .limit(1);
+  if (retained && retained.length > 0)
+    return { ok: false, error: "That player is a retained captain/vice-captain." };
+
   const { error } = await sb
     .from("auction")
     .update({
